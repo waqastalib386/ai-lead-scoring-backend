@@ -1,15 +1,18 @@
 
 from fastapi import FastAPI
 from pydantic import BaseModel
-from supabase import create_client
 import os
+from supabase import create_client
+from dotenv import load_dotenv
 
-app = FastAPI()
+load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+app = FastAPI()
 
 class Lead(BaseModel):
     age: int
@@ -38,8 +41,15 @@ def get_category(score: int):
 
 @app.post("/predict")
 def predict(lead: Lead):
-    score = calculate_score(lead)
-    category = get_category(score)
+
+    score = lead.time_spent + lead.pages_visited * 10
+
+    if score >= 80:
+        category = "Hot Lead"
+    elif score >= 50:
+        category = "Warm Lead"
+    else:
+        category = "Cold Lead"
 
     supabase.table("leads").insert({
         "age": lead.age,
