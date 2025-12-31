@@ -1,46 +1,32 @@
 
-from supabase import create_client
 import os
-
-supabase = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-)
-from fastapi import Header, HTTPException, Depends
 import jwt
+from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from supabase import create_client, Client
 
+# -----------------------------
+# ENV VARIABLES (Render only)
+# -----------------------------
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
-def get_current_user(authorization: str = Header(...)):
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing token")
+if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_JWT_SECRET:
+    raise Exception("Missing required Supabase environment variables")
 
-    token = authorization.replace("Bearer ", "")
+# -----------------------------
+# Supabase Client (SAFE INIT)
+# -----------------------------
+def get_supabase() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    try:
-        payload = jwt.decode(
-    token,
-    SUPABASE_JWT_SECRET,
-    algorithms=["HS256"],
-    options={"verify_aud": False}
-)
-        return payload["sub"]
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-from fastapi import FastAPI
-from pydantic import BaseModel
-from supabase import create_client
-from dotenv import load_dotenv
-from fastapi.middleware.cors import CORSMiddleware
+supabase = get_supabase()
 
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
+# -----------------------------
+# FastAPI App
+# -----------------------------
 app = FastAPI()
 
 app.add_middleware(
@@ -51,31 +37,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class Lead(BaseModel):
-    age: int
-    income: int
-    source: str
-    time_spent: int
-    pages_visited: int
+# -----------------------------
+# Auth: Get Current User
+# -----------------------------
+def get_current_user(authorization: str = Header(...)) -> str:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing token")
 
-def calculate_score(data: Lead):
-    score = 0
-    if data.income > 80000:
-        score += 40
-    if data.time_spent > 300:
-        score += 30
-    if data.pages_visited >= 7:
-        score += 30
-    return min(score, 100)
+    token = authorization.replace("Bearer ", "")
 
-def get_category(score: int):
-    if score >= 80:
-        return "Hot Lead"
-    elif score >= 50:
-        return "Warm Lead"
-    else:
-        return "Cold Lead"
+    try:
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False}
+        )
+        return payload["sub"]  # user_id
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
+# -----------------------------
+# API: Add Lead
+# -----------------------------
 @app.post("/lead")
 def add_lead(data: dict, user_id: str = Depends(get_current_user)):
 
@@ -102,6 +86,9 @@ def add_lead(data: dict, user_id: str = Depends(get_current_user)):
         "category": category
     }
 
+# -----------------------------
+# API: Get Leads (User-wise)
+# -----------------------------
 @app.get("/leads")
 def get_leads(user_id: str = Depends(get_current_user)):
     response = (
@@ -111,7 +98,4 @@ def get_leads(user_id: str = Depends(get_current_user)):
         .eq("user_id", user_id)
         .execute()
     )
-
     return response.data
-if not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
-    raise Exception("SUPABASE_SERVICE_ROLE_KEY missing")
