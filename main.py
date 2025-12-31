@@ -1,7 +1,13 @@
 
+from supabase import create_client
+import os
+
+supabase = create_client(
+    os.getenv("SUPABASE_URL"),
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+)
 from fastapi import Header, HTTPException, Depends
 import jwt
-import os
 
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
@@ -82,30 +88,28 @@ def add_lead(data: dict, user_id: str = Depends(get_current_user)):
     else:
         category = "Cold Lead"
 
-    return {
-        "user_id": user_id,
-        "score": score,
-        "category": category
-    }
-
     supabase.table("leads").insert({
-        "age": lead.age,
-        "income": lead.income,
-        "source": lead.source,
-        "time_spent": lead.time_spent,
-        "pages_visited": lead.pages_visited,
+        "user_id": user_id,
+        "time_spent": data["time_spent"],
+        "pages_visited": data["pages_visited"],
         "score": score,
         "category": category
     }).execute()
 
     return {
+        "message": "Lead saved successfully",
         "score": score,
-        "lead_category": category
+        "category": category
     }
+
 @app.get("/leads")
-def get_leads():
-    response = supabase.table("leads").select(
-        "age, income, source, score, category"
-    ).order("created_at", desc=True).execute()
+def get_leads(user_id: str = Depends(get_current_user)):
+    response = (
+        supabase
+        .table("leads")
+        .select("*")
+        .eq("user_id", user_id)
+        .execute()
+    )
 
     return response.data
