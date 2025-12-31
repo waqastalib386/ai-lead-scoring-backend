@@ -1,7 +1,29 @@
 
+from fastapi import Header, HTTPException, Depends
+import jwt
+import os
+
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+
+def get_current_user(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    token = authorization.replace("Bearer ", "")
+
+    try:
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+        return payload["sub"]
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
 from fastapi import FastAPI
 from pydantic import BaseModel
-import os
 from supabase import create_client
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,10 +70,10 @@ def get_category(score: int):
     else:
         return "Cold Lead"
 
-@app.post("/predict")
-def predict(lead: Lead):
+@app.post("/lead")
+def add_lead(data: dict, user_id: str = Depends(get_current_user)):
 
-    score = lead.time_spent + lead.pages_visited * 10
+    score = data["time_spent"] + data["pages_visited"] * 10
 
     if score >= 80:
         category = "Hot Lead"
@@ -59,6 +81,12 @@ def predict(lead: Lead):
         category = "Warm Lead"
     else:
         category = "Cold Lead"
+
+    return {
+        "user_id": user_id,
+        "score": score,
+        "category": category
+    }
 
     supabase.table("leads").insert({
         "age": lead.age,
