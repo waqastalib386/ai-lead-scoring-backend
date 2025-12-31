@@ -113,3 +113,5 @@ def get_leads(user_id: str = Depends(get_current_user)):
     )
 
     return response.data
+if not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
+    raise Exception("SUPABASE_SERVICE_ROLE_KEY missing")
