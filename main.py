@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import os
 from supabase import create_client
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
@@ -13,6 +14,14 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class Lead(BaseModel):
     age: int
@@ -65,3 +74,10 @@ def predict(lead: Lead):
         "score": score,
         "lead_category": category
     }
+@app.get("/leads")
+def get_leads():
+    response = supabase.table("leads").select(
+        "age, income, source, score, category"
+    ).order("created_at", desc=True).execute()
+
+    return response.data
