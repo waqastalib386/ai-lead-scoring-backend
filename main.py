@@ -13,9 +13,15 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
+print(
+    "DEBUG ENV",
+    bool(SUPABASE_URL),
+    bool(SUPABASE_SERVICE_ROLE_KEY),
+    bool(SUPABASE_JWT_SECRET)
+)
+
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_JWT_SECRET:
     raise Exception("Missing required Supabase environment variables")
-
 # -----------------------------
 # Supabase Client (SAFE INIT)
 # -----------------------------
