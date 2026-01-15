@@ -37,8 +37,10 @@ def calculate_score(age, income, pages_visited):
         score += 30
     elif pages_visited >= 3:
         score += 15
+
     category = "Hot" if score >= 70 else "Warm" if score >= 40 else "Cold"
     return score, category
+
 
 @app.get("/")
 def root():
@@ -59,7 +61,9 @@ def create_lead(
         income = int(data["income"])
         pages = int(data["pages_visited"])
         time_spent = int(data["time_spent"])
+
         score, category = calculate_score(age, income, pages)
+
         res = supabase.table("leads").insert({
             "age": age,
             "income": income,
@@ -70,9 +74,12 @@ def create_lead(
             "category": category,
             "created_at": datetime.utcnow().isoformat()
         }).execute()
+
         return {"status": "success"}
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.post("/login")
 def login(data: dict):
@@ -80,28 +87,8 @@ def login(data: dict):
         "email": data["email"],
         "password": data["password"]
     })
+
     return {
         "access_token": res.session.access_token,
         "token_type": "bearer"
     }
-
-# NEW SIGNUP ENDPOINT - ADD THIS
-@app.post("/signup")
-def signup(data: dict):
-    try:
-        res = supabase.auth.sign_up({
-            "email": data["email"],
-            "password": data["password"]
-        })
-        
-        if res.user:
-            return {
-                "status": "success",
-                "message": "User created successfully!",
-                "user_id": res.user.id
-            }
-        else:
-            raise HTTPException(status_code=400, detail="Signup failed")
-            
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
