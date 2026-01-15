@@ -95,17 +95,15 @@ def login(data: dict):
 @app.post("/signup")
 def signup(data: dict):
     try:
-        # Supabase mein user create karo
         res = supabase.auth.sign_up({
             "email": data["email"],
             "password": data["password"]
         })
         
-        # Check if signup successful
         if res.user:
             return {
                 "status": "success",
-                "message": "User created successfully! Please check your email for verification.",
+                "message": "User created successfully!",
                 "user_id": res.user.id
             }
         else:
