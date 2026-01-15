@@ -1,39 +1,21 @@
 
-import os
-import jwt
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from supabase import create_client, Client
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from datetime import datetime
+from dotenv import load_dotenv
+from supabase import create_client
+import os
 
-# -----------------------------
-# ENV VARIABLES (Render only)
-# -----------------------------
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+load_dotenv()
 
-print(
-    "DEBUG ENV",
-    bool(SUPABASE_URL),
-    bool(SUPABASE_SERVICE_ROLE_KEY),
-    bool(SUPABASE_JWT_SECRET)
+supabase = create_client(
+    os.getenv("SUPABASE_URL"),
+    os.getenv("SUPABASE_KEY")
 )
 
-if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_JWT_SECRET:
-    raise Exception("Missing required Supabase environment variables")
-# -----------------------------
-# Supabase Client (SAFE INIT)
-# -----------------------------
-def get_supabase() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-supabase = get_supabase()
-
-# -----------------------------
-# FastAPI App
-# -----------------------------
 app = FastAPI()
+security = HTTPBearer()
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,65 +25,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -----------------------------
-# Auth: Get Current User
-# -----------------------------
-def get_current_user(authorization: str = Header(...)) -> str:
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing token")
+def calculate_score(age, income, pages_visited):
+    score = 0
+    if 25 <= age <= 45:
+        score += 20
+    if income >= 80000:
+        score += 30
+    elif income >= 50000:
+        score += 15
+    if pages_visited >= 6:
+        score += 30
+    elif pages_visited >= 3:
+        score += 15
 
-    token = authorization.replace("Bearer ", "")
+    category = "Hot" if score >= 70 else "Warm" if score >= 40 else "Cold"
+    return score, category
 
-    try:
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False}
-        )
-        return payload["sub"]  # user_id
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
-# -----------------------------
-# API: Add Lead
-# -----------------------------
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
+@app.get("/leads")
+def get_leads():
+    res = supabase.table("leads").select("*").order("created_at", desc=True).execute()
+    return res.data
+
 @app.post("/lead")
-def add_lead(data: dict, user_id: str = Depends(get_current_user)):
+def create_lead(
+    data: dict,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    try:
+        age = int(data["age"])
+        income = int(data["income"])
+        pages = int(data["pages_visited"])
+        time_spent = int(data["time_spent"])
 
-    score = data["time_spent"] + data["pages_visited"] * 10
+        score, category = calculate_score(age, income, pages)
 
-    if score >= 80:
-        category = "Hot Lead"
-    elif score >= 50:
-        category = "Warm Lead"
-    else:
-        category = "Cold Lead"
+        res = supabase.table("leads").insert({
+            "age": age,
+            "income": income,
+            "source": data["source"],
+            "pages_visited": pages,
+            "time_spent": time_spent,
+            "score": score,
+            "category": category,
+            "created_at": datetime.utcnow().isoformat()
+        }).execute()
 
-    supabase.table("leads").insert({
-        "user_id": user_id,
-        "time_spent": data["time_spent"],
-        "pages_visited": data["pages_visited"],
-        "score": score,
-        "category": category
-    }).execute()
+        return {"status": "success"}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/login")
+def login(data: dict):
+    res = supabase.auth.sign_in_with_password({
+        "email": data["email"],
+        "password": data["password"]
+    })
 
     return {
-        "message": "Lead saved successfully",
-        "score": score,
-        "category": category
+        "access_token": res.session.access_token,
+        "token_type": "bearer"
     }
+@app.post("/signup")
+def signup(data: dict):
+    try:
+        # Supabase mein user create karo
+        res = supabase.auth.sign_up({
+            "email": data["email"],
+            "password": data["password"]
+        })
+        
+        # Check if signup successful
+        if res.user:
+            return {
+                "status": "success",
+                "message": "User created successfully! Please check your email for verification.",
+                "user_id": res.user.id
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Signup failed")
+            
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-# -----------------------------
-# API: Get Leads (User-wise)
-# -----------------------------
-@app.get("/leads")
-def get_leads(user_id: str = Depends(get_current_user)):
-    response = (
-        supabase
-        .table("leads")
-        .select("*")
-        .eq("user_id", user_id)
-        .execute()
-    )
-    return response.data
